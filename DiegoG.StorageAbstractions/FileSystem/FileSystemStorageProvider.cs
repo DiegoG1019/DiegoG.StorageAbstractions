@@ -169,4 +169,24 @@ public class FileSystemStorageProvider : IStorageProvider
 
     public Task CopyFileAsync(string path, string newPath, bool overwrite = false, CancellationToken ct = default)
         => Task.Run(() => File.Copy(PreparePath(path), PreparePath(newPath), overwrite), ct);
+
+    public IEnumerable<string> ListFiles(string path)
+        => Directory.EnumerateFiles(PreparePath(path));
+
+    public async IAsyncEnumerable<string> ListFilesAsync(string path)
+    {
+        foreach (var x in Directory.EnumerateFiles(PreparePath(path)))
+            yield return x;
+    }
+
+    public IEnumerable<string> ListDirectories(string path)
+        => Directory.EnumerateDirectories(PreparePath(path));
+
+    public async IAsyncEnumerable<string> ListDirectoriesAsync(string path)
+    {
+        foreach (var x in Directory.EnumerateDirectories(PreparePath(path)))
+            yield return x;
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
