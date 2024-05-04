@@ -46,7 +46,23 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
     {
         if (root is null || LastRefresh.Elapsed > NodeRefreshTime)
             using (await AsyncLock.LockAsync())
+            {
                 root = InternalGetNode(Root, await Client.GetNodesAsync());
+                if (root is null)
+                {
+                    var megaRoot = (await Client.GetNodesAsync()).First(x => x.Type == NodeType.Root);
+                    var parent = megaRoot;
+
+                    if (string.IsNullOrWhiteSpace(Root))
+                        root = megaRoot;
+                    else
+                    {
+                        foreach (var part in PreparePath(Root).Split('/'))
+                            parent = await Client.CreateFolderAsync(part, parent);
+                        root = parent;
+                    }
+                }
+            }
 
         Debug.Assert(root is not null);
         return root;
@@ -507,7 +523,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
         return n is not null && n.Type is NodeType.File;
     }
 
-    public IEnumerable<string> ListFiles(string path)
+    public IEnumerable<string> ListFiles(string? path)
     {
         var n = GetNode(path) ?? throw new DirectoryNotFoundException($"Could not find directory node \"{path}\"");
         if (n.Type is not NodeType.Directory and not NodeType.Root)
@@ -517,7 +533,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
             yield return $"{path}/{node.Name}";
     }
 
-    public async IAsyncEnumerable<string> ListFilesAsync(string path)
+    public async IAsyncEnumerable<string> ListFilesAsync(string? path)
     {
         var n = await GetNodeAsync(path) ?? throw new DirectoryNotFoundException($"Could not find directory node \"{path}\"");
         if (n.Type is not NodeType.Directory and not NodeType.Root)
@@ -527,7 +543,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
             yield return $"{path}/{node.Name}";
     }
 
-    public IEnumerable<string> ListDirectories(string path)
+    public IEnumerable<string> ListDirectories(string? path)
     {
         var n = GetNode(path) ?? throw new DirectoryNotFoundException($"Could not find directory node \"{path}\"");
         if (n.Type is not NodeType.Directory and not NodeType.Root)
@@ -537,7 +553,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
             yield return $"{path}/{node.Name}";
     }
 
-    public async IAsyncEnumerable<string> ListDirectoriesAsync(string path)
+    public async IAsyncEnumerable<string> ListDirectoriesAsync(string? path)
     {
         var n = await GetNodeAsync(path) ?? throw new DirectoryNotFoundException($"Could not find directory node \"{path}\"");
         if (n.Type is not NodeType.Directory and not NodeType.Root)

@@ -41,9 +41,9 @@ public interface IStorageProvider : IDisposable, IAsyncDisposable
     public bool FileExists(string path);
     public Task<bool> FileExistsAsync(string path, CancellationToken ct = default);
 
-    public IEnumerable<string> ListFiles(string path);
-    public IAsyncEnumerable<string> ListFilesAsync(string path);
+    public IEnumerable<string> ListFiles(string? path = null);
+    public IAsyncEnumerable<string> ListFilesAsync(string? path = null);
 
-    public IEnumerable<string> ListDirectories(string path);
-    public IAsyncEnumerable<string> ListDirectoriesAsync(string path);
+    public IEnumerable<string> ListDirectories(string? path = null);
+    public IAsyncEnumerable<string> ListDirectoriesAsync(string? path = null);
 }
