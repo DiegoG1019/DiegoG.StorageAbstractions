@@ -1,6 +1,4 @@
-﻿using DiegoG.StorageAbstractions;
-
-namespace DiegoG.StorageAbstractions.FileSystem;
+﻿namespace DiegoG.StorageAbstractions.FileSystem;
 
 public class FileSystemStorageProvider : IStorageProvider
 {

@@ -1,39 +1,99 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Schema;
 using CG.Web.MegaApiClient;
 using NeoSmart.AsyncLock;
 
 namespace DiegoG.StorageAbstractions.MEGA;
 
-public class MEGAStorageProvider(IMegaApiClient client, string? root = null, bool releaseClientOnDispose = true, TimeSpan? nodeRefreshTime = null) : IStorageProvider
+public class MEGAStorageProvider(MegaApiClient.AuthInfos? authInfo, IMegaApiClient? client = null, string? root = null, bool fallbackToAnonymousLogin = true, bool releaseClientOnDispose = true, TimeSpan? nodeRefreshTime = null) : IStorageProvider
 {
     public const string ProviderName = "MEGA";
 
     public string Provider => ProviderName;
     public string? Root { get; } = root;
 
-    public IMegaApiClient Client { get; } = client ?? throw new ArgumentNullException(nameof(client));
+    public IMegaApiClient Client { get; } = client ?? new MegaApiClient();
     public bool LogoutClientOnDispose { get; } = releaseClientOnDispose;
 
     private bool HasRoot => string.IsNullOrWhiteSpace(Root) is false;
 
-    private string? RootName { get; } = string.IsNullOrWhiteSpace(root) is false ? Regexes.GetFileOrDirectoryNameRegex().Match(root).Value : null;
-
     private readonly AsyncLock AsyncLock = new();
     private readonly Stopwatch LastRefresh = new();
     private readonly TimeSpan NodeRefreshTime = nodeRefreshTime ?? TimeSpan.FromMinutes(10);
+    private readonly MegaApiClient.AuthInfos? AuthInfo = authInfo;
 
     private IEnumerable<INode>? nodeCache;
     private INode? root;
+    private MegaApiClient.LogonSessionToken? Token;
+
+    public MEGAStorageProvider(string email, string password, string? mfaKey = null, IMegaApiClient? client = null, string? root = null, bool fallbackToAnonymousLogin = true, bool releaseClientOnDispose = true, TimeSpan? nodeRefreshTime = null)
+        : this(null, client, root, fallbackToAnonymousLogin, releaseClientOnDispose, nodeRefreshTime)
+    {
+        AuthInfo = Client.GenerateAuthInfos(email, password, mfaKey);
+    }
+
+    #region Synchronous Login
+
+    private static bool TryRestoreSession(IMegaApiClient client, MegaApiClient.LogonSessionToken token, [NotNullWhen(false)] out Exception? excp)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        try
+        {
+            client.Login(token);
+            excp = null;
+            return true;
+        }
+        catch(ApiException e)
+        {
+            excp = e;
+            return false;
+        }
+    }
+
+    private bool TryLogin(MegaApiClient.AuthInfos authInfo, [NotNullWhen(false)] out Exception? excp)
+    {
+        ArgumentNullException.ThrowIfNull(authInfo);
+        try
+        {
+            Token = Client.Login(authInfo);
+            excp = null;
+            return true;
+        }
+        catch(ApiException e)
+        {
+            excp = e;
+            return false;
+        }
+    }
+
+    private static bool TryLoginAnonymous(IMegaApiClient client)
+    {
+        client.LoginAnonymous();
+        return true;
+    }
+
+    protected void EnsureLoggedIn()
+    {
+        Exception? excp = null;
+        if (Client.IsLoggedIn is false)
+            if ((Token is not null && TryRestoreSession(Client, Token, out excp)
+                || AuthInfo is not null && TryLogin(AuthInfo, out excp))
+            is false)
+            {
+                if (fallbackToAnonymousLogin is true && TryLoginAnonymous(Client))
+                    return;
+                else if (excp is not null)
+                    throw excp;
+                else
+                    throw new InvalidOperationException("Could not log in into MEGA");
+            }
+    }
+
+    #endregion
 
     public INode GetRootNode()
     {
+        EnsureLoggedIn();
         if (root is null || LastRefresh.Elapsed > NodeRefreshTime)
             using (AsyncLock.Lock())
                 root = InternalGetNode(Root, Client.GetNodes());
@@ -44,6 +104,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
 
     public async ValueTask<INode> GetRootNodeAsync()
     {
+        EnsureLoggedIn();
         if (root is null || LastRefresh.Elapsed > NodeRefreshTime)
             using (await AsyncLock.LockAsync())
             {
@@ -129,6 +190,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
 
     private INode? InternalGetNode(string? path, IEnumerable<INode> nodes)
     {
+        EnsureLoggedIn();
         var cnode = nodes.FirstOrDefault(x => x.Type == NodeType.Root || x.Id == GetRootNode().Id);
 
         if (string.IsNullOrWhiteSpace(path))
@@ -567,7 +629,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
     {
         GC.SuppressFinalize(this);
 
-        if (LogoutClientOnDispose)
+        if (LogoutClientOnDispose && Client.IsLoggedIn)
             Client.Logout();
     }
 
@@ -575,7 +637,7 @@ public class MEGAStorageProvider(IMegaApiClient client, string? root = null, boo
     {
         GC.SuppressFinalize(this);
 
-        if (LogoutClientOnDispose)
+        if (LogoutClientOnDispose && Client.IsLoggedIn)
             await Client.LogoutAsync();
     }
 }
