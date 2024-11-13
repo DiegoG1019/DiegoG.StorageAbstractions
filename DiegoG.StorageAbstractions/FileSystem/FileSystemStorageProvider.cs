@@ -1,4 +1,6 @@
-﻿namespace DiegoG.StorageAbstractions.FileSystem;
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace DiegoG.StorageAbstractions.FileSystem;
 
 public class FileSystemStorageProvider : IStorageProvider
 {
@@ -187,4 +189,16 @@ public class FileSystemStorageProvider : IStorageProvider
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    public bool TryGetAbsolutePath(string? path, [NotNullWhen(true)] out string? result)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            result = null;
+            return false;
+        }
+
+        result = Path.GetFullPath(PreparePath(path));
+        return true;
+    }
 }

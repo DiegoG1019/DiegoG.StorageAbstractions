@@ -20,6 +20,8 @@ public interface IStorageProvider : IDisposable, IAsyncDisposable
     [return: NotNullIfNotNull(nameof(path))]
     public string? PreparePath(string? path);
 
+    public bool TryGetAbsolutePath(string? path, [NotNullWhen(true)] out string? result);
+
     public bool DeleteDirectory(string path, bool recursive = false);
     public Task<bool> DeleteDirectoryAsync(string path, bool recursive = false, CancellationToken ct = default);
 
